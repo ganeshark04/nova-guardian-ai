@@ -1,2 +1,0 @@
-[phases.setup]
-nixPkgs = ["...", "tesseract"] # This installs Tesseract on Railway
