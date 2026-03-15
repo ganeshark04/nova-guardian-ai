@@ -1,12 +1,13 @@
 import os
+import shutil
+import pytesseract
 import json
 import boto3
 from flask import Flask, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 from PIL import Image
-import pytesseract
 from dotenv import load_dotenv
-import shutil
+
 
 load_dotenv()
 app = Flask(__name__)
