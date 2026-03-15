@@ -5,24 +5,23 @@ from flask import Flask, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
+# 1. Load Secrets
 load_dotenv()
+
 app = Flask(__name__)
 
-# --- AWS CLIENTS ---
-# These automatically use the keys from your Railway Variables or .env
+# 2. AWS Clients (Using Railway Variables)
 bedrock = boto3.client(service_name='bedrock-runtime', region_name='us-east-1')
 rekognition = boto3.client(service_name='rekognition', region_name='us-east-1')
 
 def get_ai_report(text, scan_type):
-    """Sends text to Amazon Nova Lite with professional tagging"""
     prompt = f"""
-    Analyze this {scan_type} for scams/phishing: "{text}"
+    Analyze this {scan_type} for scams: "{text}"
     Return ONLY JSON: {{
         "risk": 0-100, 
         "level": "SAFE"|"SUSPICIOUS"|"CRITICAL", 
-        "reasons": ["[CATEGORY] reason (max 10 words)"]
+        "reasons": ["[CATEGORY] short reason"]
     }}
-    Tags: [IMPERSONATION], [URGENCY], [LINK_RISK], [THREAT], [SENSITIVE_DATA].
     """
     body = json.dumps({"messages": [{"role": "user", "content": [{"text": prompt}]}]})
     try:
@@ -31,7 +30,7 @@ def get_ai_report(text, scan_type):
         ai_text = res_body['output']['message']['content'][0]['text']
         return json.loads(ai_text.replace("```json", "").replace("```", "").strip())
     except:
-        return {"risk": 0, "level": "OFFLINE", "reasons": ["[SYSTEM] AI Connection Error"]}
+        return {"risk": 0, "level": "OFFLINE", "reasons": ["AI Connection Error"]}
 
 @app.route("/")
 def home():
@@ -49,33 +48,22 @@ def scan():
 
 @app.route("/api/upload", methods=["POST"])
 def upload():
-    """Uses AWS Rekognition to extract text from image"""
     if 'file' not in request.files: return jsonify({"error": "No file"}), 400
-    
     file = request.files['file']
-    image_bytes = file.read() # Get image data
-    
+    image_bytes = file.read()
     try:
-        # --- 1. AWS REKOGNITION (OCR) ---
+        # AWS Rekognition OCR
         response = rekognition.detect_text(Image={'Bytes': image_bytes})
+        extracted_text = " ".join([d['DetectedText'] for d in response['TextDetections'] if d['Type'] == 'LINE'])
         
-        extracted_text = ""
-        for item in response['TextDetections']:
-            if item['Type'] == 'LINE':
-                extracted_text += item['DetectedText'] + " "
-        
-        if not extracted_text.strip():
-            extracted_text = "No text detected in image."
-
-        # --- 2. NOVA LITE (AI ANALYSIS) ---
-        report = get_ai_report(extracted_text, "extracted screenshot text")
+        # AI Analysis
+        report = get_ai_report(extracted_text, "screenshot")
         report['extracted'] = extracted_text.strip()
-        
         return jsonify(report)
-        
     except Exception as e:
-        print(f"AWS Error: {e}")
-        return jsonify({"error": "AWS Service Error"}), 500
+        return jsonify({"error": str(e)}), 500
 
+# CRITICAL FOR RAILWAY: No debug=True, No Timer, No webbrowser
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
