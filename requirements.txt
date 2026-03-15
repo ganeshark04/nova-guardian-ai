@@ -1,6 +1,0 @@
-Flask
-boto3
-python-dotenv
-pytesseract
-Pillow
-Werkzeug
